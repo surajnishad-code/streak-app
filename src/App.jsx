@@ -6,7 +6,13 @@ import Timer from './components/Timer.jsx';
 import PromptPanel from './components/PromptPanel.jsx';
 import ConfettiEffect from './components/ConfettiEffect.jsx';
 import CompletionModal from './components/CompletionModal.jsx';
+import Achievements from './components/Achievements.jsx';
+import AchievementToast from './components/AchievementToast.jsx';
 import StartButton from './components/StartButton.jsx';
+import {
+  createInitialAchievements,
+  evaluateAchievements,
+} from './achievements/achievementsLogic.js';
 
 const STORAGE_KEY = 'speakingStreak';
 
@@ -41,6 +47,11 @@ const App = () => {
   const [confettiKey, setConfettiKey] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [canInstall, setCanInstall] = useState(false);
+  const [recordingsCount, setRecordingsCount] = useState(0);
+  const [achievements, setAchievements] = useState(
+    () => createInitialAchievements(),
+  );
+  const [recentUnlocked, setRecentUnlocked] = useState(null);
 
   // Splash logo timing
   useEffect(() => {
@@ -93,6 +104,10 @@ const App = () => {
       setDailyGoal(initialGoal);
       setLastCompletedDate(storedDate);
       setRemainingSeconds(initialGoal * 60);
+      setRecordingsCount(Number(data.recordingsCount) || 0);
+      if (Array.isArray(data.achievements)) {
+        setAchievements(createInitialAchievements(data.achievements));
+      }
     } catch (e) {
       console.error('Failed to load streak data', e);
     }
@@ -124,11 +139,13 @@ const App = () => {
         lastCompletedDate,
         lifetimeMinutes,
         dailyGoal,
+        recordingsCount,
+        achievements,
         ...nextState,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     },
-    [dailyGoal, lastCompletedDate, lifetimeMinutes, streak],
+    [achievements, dailyGoal, lastCompletedDate, lifetimeMinutes, recordingsCount, streak],
   );
 
   const handleSelectGoal = (minutes) => {
@@ -143,6 +160,15 @@ const App = () => {
     const today = getTodayString();
     const nextStreak = streak + 1;
     const nextLifetime = lifetimeMinutes + dailyGoal;
+    const nextRecordings = recordingsCount + 1;
+
+    const { nextAchievements, newlyUnlocked } = evaluateAchievements({
+      streak: nextStreak,
+      lifetimeMinutes: nextLifetime,
+      recordingsCount: nextRecordings,
+      currentAchievements: achievements,
+      todayIso: today,
+    });
 
     setIsRunning(false);
     setIsPaused(false);
@@ -150,14 +176,28 @@ const App = () => {
     setStreak(nextStreak);
     setLifetimeMinutes(nextLifetime);
     setLastCompletedDate(today);
+    setRecordingsCount(nextRecordings);
+    setAchievements(nextAchievements);
     persist({
       streak: nextStreak,
       lifetimeMinutes: nextLifetime,
       lastCompletedDate: today,
+      recordingsCount: nextRecordings,
+      achievements: nextAchievements,
     });
     setConfettiKey((k) => k + 1);
     setCompletionModalOpen(true);
-  }, [dailyGoal, lifetimeMinutes, persist, streak]);
+    if (newlyUnlocked.length > 0) {
+      setRecentUnlocked(newlyUnlocked[0]);
+    }
+  }, [
+    achievements,
+    dailyGoal,
+    lifetimeMinutes,
+    persist,
+    recordingsCount,
+    streak,
+  ]);
 
   const startSession = () => {
     if (isRunning) return;
@@ -215,6 +255,10 @@ const App = () => {
         streak={streak}
         onClose={() => setCompletionModalOpen(false)}
       />
+      <AchievementToast
+        achievement={recentUnlocked}
+        onClose={() => setRecentUnlocked(null)}
+      />
 
       <header className="w-full max-w-3xl mx-auto px-5 pt-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -242,6 +286,7 @@ const App = () => {
             <DurationSelector selected={dailyGoal} onSelect={handleSelectGoal} />
             <Timer remainingSeconds={remainingSeconds} />
             <PromptPanel />
+            <Achievements achievements={achievements} />
             <StartButton
               isRunning={isRunning}
               isPaused={isPaused}

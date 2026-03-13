@@ -13,7 +13,7 @@ const DurationSelector = ({ selected, onSelect }) => {
           Tap to change duration
         </span>
       </div>
-      <div className="flex gap-3 md:gap-4 flex-col xs:flex-row">
+      <div className="flex gap-3 md:gap-4 flex-row">
         {options.map((minutes) => {
           const isActive = selected === minutes;
           return (
